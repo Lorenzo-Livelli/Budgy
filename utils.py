@@ -71,11 +71,28 @@ def load_transactions(conn, time_period):
             st.session_state.transactions = pd.DataFrame(
                 rows, columns=["id", "Amount", "Type", "Date", "Income/Expense", "Description"]
             )
-    else:
+    elif st.session_state.time_period == "All time":
         with conn.session as s:
             rows = s.execute("SELECT id, amount, Type, date, ex_in, description FROM transactions").fetchall()
             st.session_state.transactions = pd.DataFrame(
                 rows, columns=["id", "Amount", "Type", "Date", "Income/Expense", "Description"]
             )
+    elif st.session_state.time_period == "Custom":
+        with st.sidebar.container(border=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                start_date = st.date_input("Start date", key="custom_start_date")
+            with col2:
+                end_date = st.date_input("End date", key="custom_end_date")
+
+        if start_date > end_date:
+            st.sidebar.warning("Start date must be before end date.")
+
+        if start_date and end_date:
+            with conn.session as s:
+                rows = s.execute("SELECT id, amount, Type, date, ex_in, description FROM transactions WHERE date >= :start_date AND date <= :end_date", {"start_date": start_date, "end_date": end_date}).fetchall()
+                st.session_state.transactions = pd.DataFrame(
+                    rows, columns=["id", "Amount", "Type", "Date", "Income/Expense", "Description"]
+                )
     
     return st.session_state.transactions.copy()

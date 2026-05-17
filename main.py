@@ -9,15 +9,44 @@ from datetime import datetime
 # Connect to the database
 conn = st.connection("transactions_db")
 
-st.sidebar.selectbox("Select time period", ["Last 7 days", "Last 30 days", "All time"], key="time_period") 
+st.sidebar.markdown("<p style='font-size:38px;'><strong>Menu:</strong></p>", unsafe_allow_html=True)
+
+st.sidebar.selectbox("Select time period", ["Last 7 days", "Last 30 days", "All time", "Custom"], key="time_period") 
+
+# if st.session_state.time_period == "Custom":
+#     start_date = st.sidebar.date_input("Start date", key="custom_start_date")
+#     end_date = st.sidebar.date_input("End date", key="custom_end_date")
+# else:
+#     start_date = None
+#     end_date = None
 
 transaction_df = utils.load_transactions(conn, st.session_state.time_period)
 
 st.title("Budgy")
 
+st.sidebar.markdown('<hr>', unsafe_allow_html=True)
+st.sidebar.markdown('<p style="font-size:18px;"><strong>Order transactions:</strong></p>', unsafe_allow_html=True)
+with st.sidebar.container(border=True):
+    col1, col2 = st.columns(2)
+    with col1:
+        st.selectbox("", ["Date", "Amount"], key="order_by", label_visibility="collapsed")
+    with col2:
+        st.selectbox("", ["⬇️", "⬆️"], key="order_direction", label_visibility="collapsed")
+
+    # order transactions by date or amount, in ascending or descending order, and update the dataframe accordingly
+    if st.session_state.order_by == "Date":
+        transaction_df = transaction_df.sort_values(by="Date", ascending=st.session_state.order_direction == "⬇️")
+    elif st.session_state.order_by == "Amount":
+        transaction_df = transaction_df.sort_values(by="Amount", ascending=st.session_state.order_direction == "⬇️")
+
+    st.selectbox("Exclude incomes", ["No", "Yes"], key="exclude_incomes")
+    if st.session_state.exclude_incomes == "Yes":
+        transaction_df = transaction_df[transaction_df["Income/Expense"] == "Expense"]
+    
+
+
 # Formated dataframe to display
 df_to_display = utils.format_database(transaction_df)
-
 
 # Display dataframe
 st.data_editor(
@@ -36,18 +65,30 @@ st.data_editor(
 # display the total balance
 total_balance = st.session_state.transactions["Amount"].sum()
 st.markdown(f"<h3 style='text-align: right; color: {'#54b86d' if total_balance >= 0 else '#bf2817'};'>Total Balance: {total_balance:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " €</h3>", unsafe_allow_html=True)
+
 # Generate line chart
 general_fig = go.Figure()
-general_fig.add_trace(go.Scatter(x=st.session_state.transactions["Date"], y=st.session_state.transactions["Amount"].cumsum(), mode='lines+markers', line_color='#54b86d' if total_balance >= 0 else '#bf2817'))
+sorted_transactions = st.session_state.transactions.sort_values(by="Date")
+general_fig.add_trace(go.Scatter(x=sorted_transactions["Date"], y=sorted_transactions["Amount"].cumsum(), mode='lines+markers', line_color='#54b86d' if total_balance >= 0 else '#bf2817'))
 
-# add a horizontal line at y=0
-general_fig.add_shape(type='line', x0=st.session_state.transactions["Date"].min(), x1=pd.Timestamp.now(), y0=0, y1=0, line=dict(color='white', width=1), opacity=0.5)
+# add a horizontal line at y=0 that spans the entire width of the graph
+general_fig.add_shape(
+    type='line',
+    xref='paper',   # use plot width instead of data coordinates
+    x0=0,
+    x1=1,
+    yref='y',
+    y0=0,
+    y1=0,
+    line=dict(color='white', width=1),
+    opacity=0.5
+)
 
 # Calculate cumulative amounts once to use in the loop
-cumulative_amounts = st.session_state.transactions["Amount"].cumsum()
+cumulative_amounts = sorted_transactions["Amount"].cumsum()
 
 # Add a vertical line at each transaction date (from 0 to that day's cumulative amount)
-for date, cum_amount in zip(st.session_state.transactions["Date"], cumulative_amounts):
+for date, cum_amount in zip(sorted_transactions["Date"], cumulative_amounts):
     general_fig.add_shape(
         type='line', 
         x0=date, 
@@ -89,9 +130,12 @@ for t in expenses_by_type.index:
 # add some space between the table and the form
 st.markdown("<br><br>", unsafe_allow_html=True)
 
+
 # Add new transaction
+st.sidebar.markdown('<hr>', unsafe_allow_html=True)
+st.sidebar.markdown('<p style="font-size:18px;"><strong>Add a new transaction:</strong></p>', unsafe_allow_html=True)
+
 with st.sidebar.container(border=True):
-    st.markdown('<p style="font-size:14px;"><strong>Add a new transaction:</strong></p>', unsafe_allow_html=True)
     amount = st.number_input("Amount", value=None, format="%.2f")
     Type = st.selectbox("Type", ["Salary", "Groceries", "Rent", "Entertainment","Travel","Mobility", "Other"])
     date = st.date_input("Date", format="DD/MM/YYYY")
@@ -104,6 +148,13 @@ with st.sidebar.container(border=True):
             st.warning("Please enter an amount.")
         else:
             ex_in = "Income" if amount >= 0 else "Expense"
+        
+            if amount >=0 and Type not in ["Salary"]:
+                st.warning("For an income transaction, the type must be 'Salary'. Please change the type or the amount.")
+                st.stop()
+            if amount < 0 and Type in ["Salary"]:
+                st.warning("For an expense transaction, the type cannot be 'Salary'. Please change the type or the amount.")
+                st.stop()
                 
             new_transaction = {
                 "Amount": amount,
@@ -134,9 +185,10 @@ with st.sidebar.container(border=True):
         st.rerun()
 
 # Remove a transaction
-with st.sidebar.container(border=True):
+st.sidebar.markdown('<hr>', unsafe_allow_html=True)
+st.sidebar.markdown('<p style="font-size:18px;"><strong>Remove a transaction:</strong></p>', unsafe_allow_html=True)
 
-    st.markdown('<p style="font-size:14px;"><strong>Remove a transaction:</strong></p>', unsafe_allow_html=True)
+with st.sidebar.container(border=True):
 
     transaction_to_remove = st.selectbox("Transactions", st.session_state.transactions["Type"] + " | " + st.session_state.transactions["Date"].apply(lambda x: datetime.strptime(x, "%Y-%m-%d").strftime("%d/%m/%Y")) + " | " + st.session_state.transactions["Amount"].apply(lambda x: f"({x:,.2f}) ")+ st.session_state.transactions["Description"].apply(lambda x: f" - {x}" if x is not "" else "") + st.session_state.transactions["id"].apply(lambda x: f" (id: {x})"), key="transaction_to_remove")
 
