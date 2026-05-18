@@ -166,9 +166,35 @@ with st.sidebar.container(border=True):
         # capitalize the first letter of the type and make the rest lowercase
         Type = Type.capitalize()
 
-    date = st.date_input("Date", format="DD/MM/YYYY")
+
+    date_placeholder = st.empty()
+
     description = st.text_input("Description")
 
+    recurring_bool = st.checkbox("Recurring transaction")
+
+    if not recurring_bool:
+        with date_placeholder:
+            date = st.date_input("Date", format="DD/MM/YYYY")
+
+    if recurring_bool:
+        recurring_frequency = st.selectbox(
+            "Frequency",
+            ["Daily", "Weekly", "Monthly", "Yearly"]
+        )
+
+        starting_date = st.date_input(
+            "Starting date for recurring transaction",
+            format="DD/MM/YYYY"
+        )
+
+        recurring_end_date = st.date_input(
+            "End date for recurring transaction",
+            format="DD/MM/YYYY"
+        )
+
+        
+    
 
     if st.button("Add Transaction", width=200):
 
@@ -183,30 +209,31 @@ with st.sidebar.container(border=True):
             if amount < 0 and Type in ["Salary"]:
                 st.warning("For an expense transaction, the type cannot be 'Salary'. Please change the type or the amount.")
                 st.stop()
-                
-            new_transaction = {
-                "Amount": amount,
-                "Type": Type,
-                "Date": date,
-                "Income/Expense": ex_in,
-                "Description": description
-            }
+            
+            for date in ([date] if not recurring_bool else pd.date_range(starting_date, recurring_end_date, freq={"Daily": "D", "Weekly": "W", "Monthly": "M", "Yearly": "Y"}[recurring_frequency])):
+                new_transaction = {
+                    "Amount": amount,
+                    "Type": Type,
+                    "Date": date,
+                    "Income/Expense": ex_in,
+                    "Description": description
+                }
 
-            with conn.session as s:
-                s.execute(
-                    text("""
-                        INSERT INTO transactions (amount, Type, date, ex_in, description)
-                        VALUES (:amount, :type, :date, :ex_in, :description)
-                    """),
-                    {
-                        "amount": amount,
-                        "type": Type,
-                        "date": date.strftime("%Y-%m-%d"),
-                        "ex_in": ex_in,
-                        "description": description,
-                    },
-                )
-                s.commit()
+                with conn.session as s:
+                    s.execute(
+                        text("""
+                            INSERT INTO transactions (amount, Type, date, ex_in, description)
+                            VALUES (:amount, :type, :date, :ex_in, :description)
+                        """),
+                        {
+                            "amount": amount,
+                            "type": Type,
+                            "date": date.strftime("%Y-%m-%d"),
+                            "ex_in": ex_in,
+                            "description": description,
+                        },
+                    )
+                    s.commit()
         
         st.session_state.pop("transactions")  # Clear cached transactions to force reload
         st.success("Transaction added!")

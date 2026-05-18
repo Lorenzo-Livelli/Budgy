@@ -92,5 +92,7 @@ def load_transactions(conn, time_period):
                 st.session_state.transactions = pd.DataFrame(
                     rows, columns=["id", "Amount", "Type", "Date", "Income/Expense", "Description"]
                 )
+    # Discard transactions that occur after the current date, converting the "Date" column to datetime if it's not already
+    st.session_state.transactions = st.session_state.transactions[pd.to_datetime(st.session_state.transactions["Date"]) <= pd.to_datetime("today")]
     
     return st.session_state.transactions.copy()
