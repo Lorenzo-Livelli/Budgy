@@ -26,22 +26,23 @@ st.title("Budgy", text_alignment="center")
 
 st.sidebar.markdown('<hr>', unsafe_allow_html=True)
 st.sidebar.markdown('<p style="font-size:18px;"><strong>Order transactions:</strong></p>', unsafe_allow_html=True)
-with st.sidebar.container(border=True):
-    col1, col2 = st.columns(2)
-    with col1:
-        st.selectbox("", ["Date", "Amount"], key="order_by", label_visibility="collapsed")
-    with col2:
-        st.selectbox("", ["⬇️", "⬆️"], key="order_direction", label_visibility="collapsed")
+with st.sidebar.container(border=False):
+    with st.expander("Order by", expanded=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.selectbox("", ["Date", "Amount"], key="order_by", label_visibility="collapsed")
+        with col2:
+            st.selectbox("", ["⬇️", "⬆️"], key="order_direction", label_visibility="collapsed")
 
-    # order transactions by date or amount, in ascending or descending order, and update the dataframe accordingly
-    if st.session_state.order_by == "Date":
-        transaction_df = transaction_df.sort_values(by="Date", ascending=st.session_state.order_direction == "⬇️")
-    elif st.session_state.order_by == "Amount":
-        transaction_df = transaction_df.sort_values(by="Amount", ascending=st.session_state.order_direction == "⬇️")
+        # order transactions by date or amount, in ascending or descending order, and update the dataframe accordingly
+        if st.session_state.order_by == "Date":
+            transaction_df = transaction_df.sort_values(by="Date", ascending=st.session_state.order_direction == "⬇️")
+        elif st.session_state.order_by == "Amount":
+            transaction_df = transaction_df.sort_values(by="Amount", ascending=st.session_state.order_direction == "⬇️")
 
-    st.selectbox("Exclude incomes", ["No", "Yes"], key="exclude_incomes")
-    if st.session_state.exclude_incomes == "Yes":
-        transaction_df = transaction_df[transaction_df["Income/Expense"] == "Expense"]
+        st.selectbox("Exclude incomes", ["No", "Yes"], key="exclude_incomes")
+        if st.session_state.exclude_incomes == "Yes":
+            transaction_df = transaction_df[transaction_df["Income/Expense"] == "Expense"]
     
 
 
@@ -136,11 +137,6 @@ st.plotly_chart(pie_fig, use_container_width=True)
 for t in expenses_by_type.index:
     st.markdown(f"<p style='color: {utils.type_colors(t).split(':')[-1][:-1]}; font-size: 18px;'>{t}: {expenses_by_type[t]:,.2f} €</p>", unsafe_allow_html=True)
 
-
-# add some space between the table and the form
-st.markdown("<br><br>", unsafe_allow_html=True)
-
-
 # Add new transaction
 st.sidebar.markdown('<hr>', unsafe_allow_html=True)
 st.sidebar.markdown('<p style="font-size:18px;"><strong>Add a new transaction:</strong></p>', unsafe_allow_html=True)
@@ -158,86 +154,87 @@ with conn.session as s:
 # Order types_in_db alphabetically, but keep "Other" at the end of the list
 types_in_db = sorted([t for t in types_in_db if t != "Other"]) + [t for t in types_in_db if t == "Other"]
 
-with st.sidebar.container(border=True):
-    amount = st.number_input("Amount", value=None, format="%.2f")
-    Type = st.selectbox("Type", types_in_db)
-    if Type == "Other":
-        Type = st.text_input("Specify the new type")
-        # capitalize the first letter of the type and make the rest lowercase
-        Type = Type.capitalize()
+with st.sidebar.container(border=False):
+    with st.expander("Transaction details", expanded=True):
+        amount = st.number_input("Amount", value=None, format="%.2f")
+        Type = st.selectbox("Type", types_in_db)
+        if Type == "Other":
+            Type = st.text_input("Specify the new type")
+            # capitalize the first letter of the type and make the rest lowercase
+            Type = Type.capitalize()
 
 
-    date_placeholder = st.empty()
+        date_placeholder = st.empty()
 
-    description = st.text_input("Description")
+        description = st.text_input("Description")
 
-    recurring_bool = st.checkbox("Recurring transaction")
+        recurring_bool = st.checkbox("Recurring transaction")
 
-    if not recurring_bool:
-        with date_placeholder:
-            date = st.date_input("Date", format="DD/MM/YYYY")
+        if not recurring_bool:
+            with date_placeholder:
+                date = st.date_input("Date", format="DD/MM/YYYY")
 
-    if recurring_bool:
-        recurring_frequency = st.selectbox(
-            "Frequency",
-            ["Daily", "Weekly", "Monthly", "Yearly"]
-        )
+        if recurring_bool:
+            recurring_frequency = st.selectbox(
+                "Frequency",
+                ["Daily", "Weekly", "Monthly", "Yearly"]
+            )
 
-        starting_date = st.date_input(
-            "Starting date for recurring transaction",
-            format="DD/MM/YYYY"
-        )
+            starting_date = st.date_input(
+                "Starting date for recurring transaction",
+                format="DD/MM/YYYY"
+            )
 
-        recurring_end_date = st.date_input(
-            "End date for recurring transaction",
-            format="DD/MM/YYYY"
-        )
+            recurring_end_date = st.date_input(
+                "End date for recurring transaction",
+                format="DD/MM/YYYY"
+            )
 
-        
-    
-
-    if st.button("Add Transaction", width=200):
-
-        if amount is None:
-            st.warning("Please enter an amount.")
-        else:
-            ex_in = "Income" if amount >= 0 else "Expense"
-        
-            if amount >=0 and Type not in ["Salary"]:
-                st.warning("For an income transaction, the type must be 'Salary'. Please change the type or the amount.")
-                st.stop()
-            if amount < 0 and Type in ["Salary"]:
-                st.warning("For an expense transaction, the type cannot be 'Salary'. Please change the type or the amount.")
-                st.stop()
             
-            for date in ([date] if not recurring_bool else pd.date_range(starting_date, recurring_end_date, freq={"Daily": "D", "Weekly": "W", "Monthly": "M", "Yearly": "Y"}[recurring_frequency])):
-                new_transaction = {
-                    "Amount": amount,
-                    "Type": Type,
-                    "Date": date,
-                    "Income/Expense": ex_in,
-                    "Description": description
-                }
-
-                with conn.session as s:
-                    s.execute(
-                        text("""
-                            INSERT INTO transactions (amount, Type, date, ex_in, description)
-                            VALUES (:amount, :type, :date, :ex_in, :description)
-                        """),
-                        {
-                            "amount": amount,
-                            "type": Type,
-                            "date": date.strftime("%Y-%m-%d"),
-                            "ex_in": ex_in,
-                            "description": description,
-                        },
-                    )
-                    s.commit()
         
-        st.session_state.pop("transactions")  # Clear cached transactions to force reload
-        st.success("Transaction added!")
-        st.rerun()
+
+        if st.button("Add Transaction", width=200):
+
+            if amount is None:
+                st.warning("Please enter an amount.")
+            else:
+                ex_in = "Income" if amount >= 0 else "Expense"
+            
+                if amount >=0 and Type not in ["Salary"]:
+                    st.warning("For an income transaction, the type must be 'Salary'. Please change the type or the amount.")
+                    st.stop()
+                if amount < 0 and Type in ["Salary"]:
+                    st.warning("For an expense transaction, the type cannot be 'Salary'. Please change the type or the amount.")
+                    st.stop()
+                
+                for date in ([date] if not recurring_bool else pd.date_range(starting_date, recurring_end_date, freq={"Daily": "D", "Weekly": "W", "Monthly": "M", "Yearly": "Y"}[recurring_frequency])):
+                    new_transaction = {
+                        "Amount": amount,
+                        "Type": Type,
+                        "Date": date,
+                        "Income/Expense": ex_in,
+                        "Description": description
+                    }
+
+                    with conn.session as s:
+                        s.execute(
+                            text("""
+                                INSERT INTO transactions (amount, Type, date, ex_in, description)
+                                VALUES (:amount, :type, :date, :ex_in, :description)
+                            """),
+                            {
+                                "amount": amount,
+                                "type": Type,
+                                "date": date.strftime("%Y-%m-%d"),
+                                "ex_in": ex_in,
+                                "description": description,
+                            },
+                        )
+                        s.commit()
+            
+            st.session_state.pop("transactions")  # Clear cached transactions to force reload
+            st.success("Transaction added!")
+            st.rerun()
 
 # Remove a transaction
 st.sidebar.markdown('<hr>', unsafe_allow_html=True)
@@ -258,4 +255,79 @@ with st.sidebar.container(border=True):
             st.success("Transaction removed!")
             st.rerun()
 
+st.sidebar.markdown('<hr>', unsafe_allow_html=True)
 
+# Set budget for each type
+st.sidebar.markdown('<p style="font-size:18px;"><strong>Set budget:</strong></p>', unsafe_allow_html=True)
+with st.sidebar.expander("Budget by Type", expanded=False):
+    for t in types_in_db:
+        budget = st.number_input(f"{t}", value=0.0, format="%.2f", key=f"budget_{t}")
+
+st.markdown('<br>', unsafe_allow_html=True)
+st.markdown("<h3 style='text-align: Left;'>Budget </h2>", unsafe_allow_html=True)
+# Select a month and a year
+with st.container(border=True):
+    col1, col2 = st.columns(2)
+    with col1:
+        selected_month = st.selectbox("Select month", ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], key="selected_month")
+    with col2:
+        current_year = datetime.now().year
+        selected_year = st.selectbox("Select year", options=[str(y) for y in range(current_year - 10, current_year + 1)], index=10,key="selected_year")
+
+month_map = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12
+}
+
+
+# Generate a dataframe that sums up, for each type, the total expenses for the selected month and year, and display it in a table with the same color formatting as before.
+type_expenses_df = st.session_state.transactions[
+    (pd.to_datetime(st.session_state.transactions["Date"]).dt.month == month_map[selected_month]) &
+    (pd.to_datetime(st.session_state.transactions["Date"]).dt.year == int(selected_year))
+].groupby("Type")["Amount"].sum().to_frame()
+
+# check if there are transactions for the selected month and year, if not display a message instead of the table
+if type_expenses_df.empty:
+    st.warning("No transactions for the selected month and year.")
+else:
+
+    # Rename amount to "Total Expenses"
+    type_expenses_df = type_expenses_df.rename(columns={"Amount": "Total Expenses"})
+
+    # Convert total expenses into float with two decimals
+    type_expenses_df["Total Expenses"] = type_expenses_df["Total Expenses"].apply(lambda x: float(f"{x:.2f}"))
+
+    # Add a colum "budget" and a colum "remaining budget" to the dataframe
+    # set the budget column to the value of the corresponding budget for each type as a float
+    type_expenses_df["Budget"] = type_expenses_df.index.map(lambda t: st.session_state.get(f"budget_{t}", 0.0))
+    type_expenses_df["Remaining Budget"] = type_expenses_df["Budget"] + type_expenses_df["Total Expenses"]
+
+    # Format type as a column
+    type_expenses_df = type_expenses_df.reset_index()
+
+    def color_budget_values(val):
+        if val < 0:
+            return 'color: red;'
+        elif val > 0:
+            return 'color: green;'
+        return ''  # Leaves 0 or neutral values unchanged
+
+    # Apply formatting and conditional mapping
+    type_expenses_styled_df = type_expenses_df.style.format({
+        "Total Expenses": utils.currency_formatter, 
+        "Budget": utils.currency_formatter, 
+        "Remaining Budget": utils.currency_formatter
+    }).map(
+        color_budget_values, 
+        subset=["Total Expenses", "Remaining Budget", "Budget"]
+    ).map(
+        utils.type_colors,subset=["Type"])
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    st.data_editor(
+        type_expenses_styled_df,
+        hide_index=True,
+        disabled=True,
+        use_container_width=True,
+    )

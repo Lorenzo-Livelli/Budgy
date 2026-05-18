@@ -96,3 +96,6 @@ def load_transactions(conn, time_period):
     st.session_state.transactions = st.session_state.transactions[pd.to_datetime(st.session_state.transactions["Date"]) <= pd.to_datetime("today")]
     
     return st.session_state.transactions.copy()
+
+def currency_formatter(val):
+    return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
