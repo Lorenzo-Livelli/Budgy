@@ -22,7 +22,7 @@ st.sidebar.selectbox("Select time period", ["Last 7 days", "Last 30 days", "All 
 
 transaction_df = utils.load_transactions(conn, st.session_state.time_period)
 
-st.title("Budgy")
+st.title("Budgy", text_alignment="center")
 
 st.sidebar.markdown('<hr>', unsafe_allow_html=True)
 st.sidebar.markdown('<p style="font-size:18px;"><strong>Order transactions:</strong></p>', unsafe_allow_html=True)
@@ -62,14 +62,24 @@ st.data_editor(
     }
 )
 
-# display the total balance
-total_balance = st.session_state.transactions["Amount"].sum()
-st.markdown(f"<h3 style='text-align: right; color: {'#54b86d' if total_balance >= 0 else '#bf2817'};'>Total Balance: {total_balance:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " €</h3>", unsafe_allow_html=True)
+
+
+# Display the period balance
+period_balance = st.session_state.transactions["Amount"].sum()
+if st.session_state.time_period != "All time":
+    st.markdown(f"<p style='text-align: right;  color: {'#54b86d' if period_balance >= 0 else '#bf2817'}; font-size: 18px;'>Period: {period_balance:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " </p>", unsafe_allow_html=True)
+
+
+# Display the total balance
+with conn.session as s:
+    total_balance = s.execute("SELECT SUM(amount) FROM transactions").fetchone()[0] or 0
+st.markdown(f"<p style='text-align: right; color: {'#54b86d' if total_balance >= 0 else '#bf2817'}; font-size: 24px;'>All time: {total_balance:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " </p>", unsafe_allow_html=True)
+
 
 # Generate line chart
 general_fig = go.Figure()
 sorted_transactions = st.session_state.transactions.sort_values(by="Date")
-general_fig.add_trace(go.Scatter(x=sorted_transactions["Date"], y=sorted_transactions["Amount"].cumsum(), mode='lines+markers', line_color='#54b86d' if total_balance >= 0 else '#bf2817'))
+general_fig.add_trace(go.Scatter(x=sorted_transactions["Date"], y=sorted_transactions["Amount"].cumsum(), mode='lines+markers', line_color='#54b86d' if period_balance >= 0 else '#bf2817'))
 
 # add a horizontal line at y=0 that spans the entire width of the graph
 general_fig.add_shape(
@@ -135,9 +145,27 @@ st.markdown("<br><br>", unsafe_allow_html=True)
 st.sidebar.markdown('<hr>', unsafe_allow_html=True)
 st.sidebar.markdown('<p style="font-size:18px;"><strong>Add a new transaction:</strong></p>', unsafe_allow_html=True)
 
+# Get the types from the database to populate the selectbox
+with conn.session as s:
+    result = s.execute(text("SELECT DISTINCT Type FROM transactions"))
+    types_in_db = [row[0] for row in result]
+    # Add the default types if they are not already in the database
+    default_types = ["Salary", "Groceries", "Rent", "Entertainment","Travel","Mobility", "Other"]
+    for t in default_types:
+        if t not in types_in_db:
+            types_in_db.append(t)
+
+# Order types_in_db alphabetically, but keep "Other" at the end of the list
+types_in_db = sorted([t for t in types_in_db if t != "Other"]) + [t for t in types_in_db if t == "Other"]
+
 with st.sidebar.container(border=True):
     amount = st.number_input("Amount", value=None, format="%.2f")
-    Type = st.selectbox("Type", ["Salary", "Groceries", "Rent", "Entertainment","Travel","Mobility", "Other"])
+    Type = st.selectbox("Type", types_in_db)
+    if Type == "Other":
+        Type = st.text_input("Specify the new type")
+        # capitalize the first letter of the type and make the rest lowercase
+        Type = Type.capitalize()
+
     date = st.date_input("Date", format="DD/MM/YYYY")
     description = st.text_input("Description")
 
