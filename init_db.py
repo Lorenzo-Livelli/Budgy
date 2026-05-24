@@ -1,7 +1,7 @@
 import sqlite3
 
 # Initialize SQLite database
-conn = sqlite3.connect("transactions.db")
+conn = sqlite3.connect("Budgy.db")
 
 c = conn.cursor()
 
@@ -18,17 +18,14 @@ c.execute("""
     )
 """)
 
-conn_colors = sqlite3.connect("type_colors.db")
-
-c_colors = conn_colors.cursor()
-
 # Create type_colors table if it doesn't exist
-c_colors.execute("""
+c.execute("""
     CREATE TABLE IF NOT EXISTS type_colors (
         Type TEXT PRIMARY KEY,
         color TEXT NOT NULL
     )
 """)
+
 # add default colors for the types
 default_colors = {
     "Salary": "#20FC8F",
@@ -40,8 +37,14 @@ default_colors = {
     # ,"Other": "#B8B8D1"
 }
 for t, color in default_colors.items(): 
-    c_colors.execute("INSERT OR IGNORE INTO type_colors (Type, color) VALUES (:type, :color)", {"type": t, "color": color})
-    conn_colors.commit()
-    
-    
+    c.execute("INSERT OR IGNORE INTO type_colors (Type, color) VALUES (:type, :color)", {"type": t, "color": color})
+    conn.commit()
+
+# create budgets table if it doesn't exist
+c.execute("""
+    CREATE TABLE IF NOT EXISTS budgets (
+        Type TEXT PRIMARY KEY,
+        amount REAL NOT NULL
+    )
+""")
     

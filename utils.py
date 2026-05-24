@@ -6,14 +6,14 @@ import random
 
 def type_colors(type):
     # Select the color for the given type from the database
-    with st.connection("type_colors").session as s:
+    with st.connection("budgy").session as s:
         result = s.execute("SELECT color FROM type_colors WHERE Type = :type", {"type": type}).fetchone()
         if result:
             return f'color: {result[0]};'
         
     # if the type is not found in the database, generate a random color, save it in the database and return it
     random_color = "#{:06x}".format(random.randint(0, 0xFFFFFF))
-    with st.connection("type_colors").session as s:
+    with st.connection("budgy").session as s:
         s.execute("INSERT OR REPLACE INTO type_colors (Type, color) VALUES (:type, :color)", {"type": type, "color": random_color})
         s.commit()
     return f'color: {random_color};'  # Return the generated color

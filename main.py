@@ -7,11 +7,11 @@ from datetime import datetime
 
 
 # Connect to the database
-conn = st.connection("transactions_db")
+conn = st.connection("budgy")
 
 st.sidebar.markdown("<p style='font-size:38px;'><strong>Menu:</strong></p>", unsafe_allow_html=True)
 
-st.sidebar.selectbox("Select time period", ["Last 7 days", "Last 30 days", "All time", "Custom"], key="time_period") 
+st.sidebar.selectbox("Select time period", ["All time", "Last 30 days", "Last 7 days", "Custom"], key="time_period") 
 
 # if st.session_state.time_period == "Custom":
 #     start_date = st.sidebar.date_input("Start date", key="custom_start_date")
@@ -27,7 +27,7 @@ st.title("Budgy", text_alignment="center")
 st.sidebar.markdown('<hr>', unsafe_allow_html=True)
 st.sidebar.markdown('<p style="font-size:18px;"><strong>Order transactions:</strong></p>', unsafe_allow_html=True)
 with st.sidebar.container(border=False):
-    with st.expander("Order by", expanded=True):
+    with st.expander("Order by", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
             st.selectbox("", ["Date", "Amount"], key="order_by", label_visibility="collapsed")
@@ -155,7 +155,7 @@ with conn.session as s:
 types_in_db = sorted([t for t in types_in_db if t != "Other"]) + [t for t in types_in_db if t == "Other"]
 
 with st.sidebar.container(border=False):
-    with st.expander("Transaction details", expanded=True):
+    with st.expander("Transaction details", expanded=False):
         amount = st.number_input("Amount", value=None, format="%.2f")
         Type = st.selectbox("Type", types_in_db)
         if Type == "Other":
@@ -257,39 +257,55 @@ with st.sidebar.container(border=True):
 
 st.sidebar.markdown('<hr>', unsafe_allow_html=True)
 
+
 # Set budget for each type
-st.sidebar.markdown('<p style="font-size:18px;"><strong>Set budget:</strong></p>', unsafe_allow_html=True)
+st.sidebar.markdown('<p style="font-size:18px;"><strong>Set monthly budget:</strong></p>', unsafe_allow_html=True)
 with st.sidebar.expander("Budget by Type", expanded=False):
     for t in types_in_db:
-        budget = st.number_input(f"{t}", value=0.0, format="%.2f", key=f"budget_{t}")
+        if t != "Salary" and t != "Other":  
+            budget = st.number_input(f"{t}", value=s.execute(text("SELECT amount FROM budgets WHERE Type = :type"), {"type": t}).fetchone()[0] if s.execute(text("SELECT amount FROM budgets WHERE Type = :type"), {"type": t}).fetchone() else 0.0, format="%.2f", key=f"budget_{t}")
+            # Check if the budget for the type is already in the database, if it is update it, if it is not insert it
+            with conn.session as s:
+                existing_budget = s.execute(text("SELECT amount FROM budgets WHERE Type = :type"), {"type": t}).fetchone()
+                if existing_budget:
+                    s.execute(text("UPDATE budgets SET amount = :amount WHERE Type = :type"), {"amount": budget, "type": t})
+                else:
+                    s.execute(text("INSERT INTO budgets (Type, amount) VALUES (:type, :amount)"), {"type": t, "amount": budget})
+                s.commit()
 
 st.markdown('<br>', unsafe_allow_html=True)
 st.markdown("<h3 style='text-align: Left;'>Budget </h2>", unsafe_allow_html=True)
-# Select a month and a year
 with st.container(border=True):
-    col1, col2 = st.columns(2)
-    with col1:
-        selected_month = st.selectbox("Select month", ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], key="selected_month")
-    with col2:
-        current_year = datetime.now().year
-        selected_year = st.selectbox("Select year", options=[str(y) for y in range(current_year - 10, current_year + 1)], index=10,key="selected_year")
+    
+    # Select a month and a year
+    with st.container(border=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            selected_month = st.selectbox("Select month", ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], key="selected_month")
+        with col2:
+            current_year = datetime.now().year
+            selected_year = st.selectbox("Select year", options=[str(y) for y in range(current_year - 10, current_year + 1)], index=10,key="selected_year")
 
-month_map = {
-    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
-    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12
-}
+    month_map = {
+        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+        "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12
+    }
 
 
-# Generate a dataframe that sums up, for each type, the total expenses for the selected month and year, and display it in a table with the same color formatting as before.
-type_expenses_df = st.session_state.transactions[
-    (pd.to_datetime(st.session_state.transactions["Date"]).dt.month == month_map[selected_month]) &
-    (pd.to_datetime(st.session_state.transactions["Date"]).dt.year == int(selected_year))
-].groupby("Type")["Amount"].sum().to_frame()
+    # Generate a dataframe that sums up, for each type, the total expenses for the selected month and year, and display it in a table with the same color formatting as before.
+    type_expenses_df = st.session_state.transactions[
+        (pd.to_datetime(st.session_state.transactions["Date"]).dt.month == month_map[selected_month]) &
+        (pd.to_datetime(st.session_state.transactions["Date"]).dt.year == int(selected_year))
+    ].groupby("Type")["Amount"].sum().to_frame()
 
-# check if there are transactions for the selected month and year, if not display a message instead of the table
-if type_expenses_df.empty:
-    st.warning("No transactions for the selected month and year.")
-else:
+    for t in types_in_db:
+        if t not in type_expenses_df.index:
+            type_expenses_df.loc[t] = 0.0
+
+    # # check if there are transactions for the selected month and year, if not display a message instead of the table
+    # if type_expenses_df.empty:
+    #     st.warning("No transactions for the selected month and year.")
+    # else:
 
     # Rename amount to "Total Expenses"
     type_expenses_df = type_expenses_df.rename(columns={"Amount": "Total Expenses"})
@@ -297,15 +313,33 @@ else:
     # Convert total expenses into float with two decimals
     type_expenses_df["Total Expenses"] = type_expenses_df["Total Expenses"].apply(lambda x: float(f"{x:.2f}"))
 
-    # Add a colum "budget" and a colum "remaining budget" to the dataframe
-    # set the budget column to the value of the corresponding budget for each type as a float
+    # Add a colum "budget" and a column "remaining budget" to the dataframe
     type_expenses_df["Budget"] = type_expenses_df.index.map(lambda t: st.session_state.get(f"budget_{t}", 0.0))
+
+    # Add a column "Budget" based on the budget table in the database
+    with st.connection("budgy").session as s:
+        budgets = s.execute(text("SELECT Type, amount FROM budgets")).fetchall()
+        budget_dict = {row[0]: row[1] for row in budgets}
+    type_expenses_df["Budget"] = type_expenses_df.index.map(lambda t: budget_dict.get(t, 0.0))
+
+    # set the budget column to the value of the corresponding budget for each type as a float
     type_expenses_df["Remaining Budget"] = type_expenses_df["Budget"] + type_expenses_df["Total Expenses"]
+
+    # Add a row "Total" at the end of the dataframe that sums up the total expenses, the total budget and the total remaining budget for all types
+    type_expenses_df.loc["Total"] = type_expenses_df.sum()
+
+    # Remove the salary type from the dataframe
+    if "Salary" in type_expenses_df.index:
+        type_expenses_df = type_expenses_df.drop("Salary")
+
+    # Remove the "Other" type from the dataframe
+        type_expenses_df = type_expenses_df.drop("Other")
+
 
     # Format type as a column
     type_expenses_df = type_expenses_df.reset_index()
 
-    def color_budget_values(val):
+    def color_budget_values(val): 
         if val < 0:
             return 'color: red;'
         elif val > 0:
@@ -331,3 +365,4 @@ else:
         disabled=True,
         use_container_width=True,
     )
+
