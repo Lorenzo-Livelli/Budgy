@@ -3,3 +3,4 @@ pandas
 plotly
 SQLAlchemy==1.4.0
 psycopg2-binary
+bcrypt
