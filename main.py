@@ -325,9 +325,6 @@ with st.container(border=True):
     # set the budget column to the value of the corresponding budget for each type as a float
     type_expenses_df["Remaining Budget"] = type_expenses_df["Budget"] + type_expenses_df["Total Expenses"]
 
-    # Add a row "Total" at the end of the dataframe that sums up the total expenses, the total budget and the total remaining budget for all types
-    type_expenses_df.loc["Total"] = type_expenses_df.sum()
-
     # Remove the salary type from the dataframe
     if "Salary" in type_expenses_df.index:
         type_expenses_df = type_expenses_df.drop("Salary")
@@ -335,6 +332,8 @@ with st.container(border=True):
     # Remove the "Other" type from the dataframe
         type_expenses_df = type_expenses_df.drop("Other")
 
+    # Add a row "Total" at the end of the dataframe that sums up the total expenses, the total budget and the total remaining budget for all types
+    type_expenses_df.loc["Total"] = type_expenses_df.sum()
 
     # Format type as a column
     type_expenses_df = type_expenses_df.reset_index()
