@@ -1,20 +1,29 @@
 import utils
 import pandas as pd
 import streamlit as st
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 import random
 
 def type_colors(type):
     # Select the color for the given type from the database
-    with st.connection("budgy").session as s:
+    with st.connection("supabase", type="sql").session as s:
         result = s.execute("SELECT color FROM type_colors WHERE Type = :type", {"type": type}).fetchone()
         if result:
             return f'color: {result[0]};'
         
     # if the type is not found in the database, generate a random color, save it in the database and return it
     random_color = "#{:06x}".format(random.randint(0, 0xFFFFFF))
-    with st.connection("budgy").session as s:
-        s.execute("INSERT OR REPLACE INTO type_colors (Type, color) VALUES (:type, :color)", {"type": type, "color": random_color})
+    with st.connection("supabase", type="sql").session as s:
+        s.execute(
+            text("""
+                INSERT INTO type_colors (type, color)
+                VALUES (:type, :color)
+                ON CONFLICT (type)
+                DO UPDATE SET color = EXCLUDED.color
+            """),
+            {"type": type, "color": random_color}
+        )
+
         s.commit()
     return f'color: {random_color};'  # Return the generated color
 
@@ -59,7 +68,7 @@ def format_database(df):
 def load_transactions(conn, time_period):
     if st.session_state.time_period == "Last 30 days":
         with conn.session as s:
-            rows = s.execute("SELECT id, amount, Type, date, ex_in, description FROM transactions WHERE date >= date('now', '-30 days')").fetchall()
+            rows = s.execute("SELECT id, amount, Type, date, ex_in, description FROM transactions WHERE date >= CURRENT_DATE - INTERVAL '30 days'").fetchall()
             st.session_state.transactions = pd.DataFrame(
                 rows, columns=["id", "Amount", "Type", "Date", "Income/Expense", "Description"]
             )
