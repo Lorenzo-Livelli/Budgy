@@ -46,7 +46,7 @@ if st.session_state.time_period != "All time":
     st.markdown(f"<p style='text-align: right;  color: {'#54b86d' if period_balance >= 0 else '#bf2817'}; font-size: 18px;'>Period: {period_balance:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " </p>", unsafe_allow_html=True)
 
 # Display the total balance
-total_balance = conn.session.execute("SELECT SUM(amount) FROM transactions").fetchone()[0] or 0
+total_balance = user_transactions["amount"].sum()
 st.markdown(f"<p style='text-align: right; color: {'#54b86d' if total_balance >= 0 else '#bf2817'}; font-size: 24px;'>All time: {total_balance:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " </p>", unsafe_allow_html=True)
 
 el.chart(ordered_user_transactions)
