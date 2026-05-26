@@ -1,6 +1,7 @@
 import streamlit as st
 import login_utils
 from sqlalchemy import text
+import secret_key as sk
 
 conn = st.connection("supabase", type="sql")
 
@@ -28,9 +29,11 @@ with tab_login:
 with tab_register:
     new_username = st.text_input("Username", key="register_username")
     new_password = st.text_input("Password", type="password", key="register_password")
+    key_input = st.text_input("Secret key", key="register_key")
 
 
     if st.button("Create account"):
+        sk.check_secret_key(key_input)
         login_utils.create_user(conn, new_username, new_password)
         # Extract the user_id from the database
         user_id = conn.session.execute(
