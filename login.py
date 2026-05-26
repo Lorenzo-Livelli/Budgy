@@ -33,7 +33,10 @@ with tab_register:
 
 
     if st.button("Create account"):
-        sk.check_secret_key(key_input)
+        if key_input != st.secrets["secret_key"]:
+            st.error("Invalid secret key.")
+            st.stop()
+            
         login_utils.create_user(conn, new_username, new_password)
         # Extract the user_id from the database
         user_id = conn.session.execute(
