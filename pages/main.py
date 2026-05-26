@@ -27,7 +27,7 @@ with st.sidebar.container(border=False):
         with col1:
             st.selectbox("", ["Date", "Amount"], key="order_by", label_visibility="collapsed")
         with col2:
-            st.selectbox("", ["⬇️", "⬆️"], key="order_direction", label_visibility="collapsed")
+            st.selectbox("", ["⬆️", "⬇️" ], key="order_direction", label_visibility="collapsed")
 
         # order transactions by date or amount, in ascending or descending order, and update the dataframe accordingly
         if st.session_state.order_by == "Date":
@@ -67,8 +67,7 @@ if st.session_state.time_period != "All time":
 
 
 # Display the total balance
-with conn.session as s:
-    total_balance = s.execute("SELECT SUM(amount) FROM transactions").fetchone()[0] or 0
+total_balance = conn.session.execute("SELECT SUM(amount) FROM transactions").fetchone()[0] or 0
 st.markdown(f"<p style='text-align: right; color: {'#54b86d' if total_balance >= 0 else '#bf2817'}; font-size: 24px;'>All time: {total_balance:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " </p>", unsafe_allow_html=True)
 
 
