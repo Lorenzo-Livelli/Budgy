@@ -10,30 +10,31 @@ import random as random
 
 def time_period_and_order(user_transactions):
 
-    st.sidebar.selectbox("Select time period", ["All time", "Last 30 days", "Last 7 days", "Custom"], key="time_period") 
+    st.segmented_control("Select time period:", ["All time", "Last 30 days", "Last 7 days", "Custom"],width="content",default="All time", key="time_period") 
     transaction_dates = pd.to_datetime(user_transactions["date"])
 
-    if st.session_state.time_period == "Last 30 days":
+    if st.session_state.time_period == "All time":
+        user_transactions = user_transactions[transaction_dates <= pd.Timestamp.today().normalize()]
+    elif st.session_state.time_period == "Last 30 days":
         user_transactions = user_transactions[transaction_dates >= pd.Timestamp.today().normalize() - pd.DateOffset(days=30)]
     elif st.session_state.time_period == "Last 7 days":
         user_transactions = user_transactions[transaction_dates >= pd.Timestamp.today().normalize() - pd.DateOffset(days=7)]
     elif st.session_state.time_period == "Custom":
-        with st.sidebar.container(border=True):
-            start_date = st.date_input("Start date", key="custom_start_date")
-            end_date = st.date_input("End date", key="custom_end_date")
+        with st.container(border=True):
+            start_date, end_date = st.slider("Select custom date range:", min_value=transaction_dates.min().date(), max_value=transaction_dates.max().date(), value=(transaction_dates.min().date(), transaction_dates.max().date()),format="DD/MM/YY", key="custom_date_range")
 
         if start_date > end_date:
-            st.sidebar.warning("Start date must be before end date.")
+            st.warning("Start date must be before end date.")
         else:
             user_transactions = user_transactions[
                 (transaction_dates >= pd.to_datetime(start_date))
                 & (transaction_dates <= pd.to_datetime(end_date))
             ]
     
-    st.sidebar.markdown("<br>", unsafe_allow_html=True)
-    st.sidebar.markdown('<p style="font-size:18px;"><strong>Order transactions:</strong></p>', unsafe_allow_html=True)
-    with st.sidebar.container(border=False):
-        with st.sidebar.expander("Order by", expanded=False):
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<p style="font-size:18px;"><strong>Order transactions:</strong></p>', unsafe_allow_html=True)
+    with st.container(border=False):
+        with st.expander("Order by", expanded=False):
             col1, col2 = st.columns(2)
 
             with col1:
@@ -46,24 +47,28 @@ def time_period_and_order(user_transactions):
             elif st.session_state.order_by == "Amount":
                 user_transactions = user_transactions.sort_values(by="amount", ascending=st.session_state.order_direction == "⬇️")
     
-            st.selectbox("Exclude incomes", ["No", "Yes"], key="exclude_incomes")
-            if st.session_state.exclude_incomes == "Yes":
+            st.checkbox("Exclude incomes", key="exclude_incomes")
+            if st.session_state.exclude_incomes:
                 user_transactions = user_transactions[user_transactions["ex_in"] == "Expense"]
     return user_transactions
     
 
 def add_transaction(conn, user_type_characteristics):
-    st.sidebar.markdown('<p style="font-size:18px;"><strong>Add a new transaction:</strong></p>', unsafe_allow_html=True)
+
+    MAX_OCCURRENCES = 100
+
+    st.markdown('<p style="font-size:18px;"><strong>Add a new transaction:</strong></p>', unsafe_allow_html=True)
 
     # extract types from user_type_characteristics
     type_options = user_type_characteristics["type"].unique().tolist()
-    type_options.remove("Salary")
+    if "Salary" in type_options:
+        type_options.remove("Salary")
     type_options = sorted(type_options)
     type_options.insert(0, "Salary")
     type_options.append("Other")
 
-    with st.sidebar.container(border=False):
-        with st.sidebar.expander("Add transaction", expanded=False):
+    with st.container(border=False):
+        with st.expander("Add transaction", expanded=False):
             amount = st.number_input("Amount", value=0.0, step=0.01, key="new_transaction_amount")
             category = st.selectbox("Type", type_options, key="new_category")
             
@@ -113,10 +118,16 @@ def add_transaction(conn, user_type_characteristics):
                 if not category:
                     st.warning("Please enter a valid type.")
                     return
-                
+
                 if amount == 0:
                     st.warning("Amount cannot be zero.")
                     return
+                
+                if amount< 0.01 and amount > -0.01:
+                    st.warning("Amount cannot be too small.")
+                    return
+                
+                amount = round(amount, 2)
                 
                 is_new_type = category not in user_type_characteristics["type"].values
 
@@ -148,6 +159,10 @@ def add_transaction(conn, user_type_characteristics):
                         st.warning("Expense transactions cannot have a positive amount.")
                         return
                     
+                    if number_of_occurrences > MAX_OCCURRENCES:
+                        st.warning("Number of occurrences is too high")
+                        return
+                    
                     with conn.session as s:
                         if recurring_bool:
                             for i in range(number_of_occurrences):
@@ -159,7 +174,7 @@ def add_transaction(conn, user_type_characteristics):
                                     transaction_date = recurring_starting_date + pd.DateOffset(months=i)
                                 elif recurring_frequency == "Yearly":
                                     transaction_date = recurring_starting_date + pd.DateOffset(years=i)
-
+                                
                                 new_utils.insert_transaction(s, amount, category, transaction_date, description)
                             
                         else:
@@ -240,7 +255,7 @@ def remove_transaction(conn, user_transactions):
     }
 
     
-    with st.sidebar.container(border=True):
+    with st.container(border=True):
 
         transaction_id = st.selectbox(
         "Transactions",
@@ -269,133 +284,147 @@ def remove_transaction(conn, user_transactions):
                 st.success("Transaction removed!")
                 st.rerun()
 
-# def set_monthly_budget(conn, user_budget):
-
-#     budget_types = user_budget["type"].tolist()
-#     budget_types = sorted(budget_types)
-
-#     with st.sidebar.container(border=True):
-
-#         selected_type = st.selectbox("Select type", budget_types, key="budget_type")
-
-#         st.session_state.current_amount = user_budget[user_budget["type"] == selected_type]["amount"].iloc[0]
-
-#         new_amount = st.number_input("New monthly amount", value=float(st.session_state.current_amount), step=0.01, key="new_monthly_amount")
-
-#         if st.button("Update monthly budget"):
-#             with conn.session as s:
-#                 s.execute(
-#                     text("""
-#                         UPDATE budgets
-#                         SET amount = :amount
-#                         WHERE type = :type
-#                         AND user_id = :user_id
-#                     """),
-#                     {
-#                         "amount": new_amount,
-#                         "type": selected_type,
-#                         "user_id": st.session_state.user_id,
-#                     },
-#                 )
-#                 s.commit()
-#             st.success("Monthly budget updated!")
-#             st.rerun()
 
 def set_monthly_budget(conn, user_budget):
+    # Keep type as a normal column, not as index
+    original_df = user_budget[["type", "amount"]].copy().reset_index(drop=True)
+    original_df["amount"] = original_df["amount"].astype(float).round(2)
 
-    budget_types = user_budget["type"].tolist()
-    budget_types = sorted(budget_types)
+    display_df = original_df.copy()
+    display_df["amount"] = display_df["amount"].apply(new_utils.format_it_number)
 
-    with st.sidebar.container(border=True):
+    with st.container(border=True):
+        edited_df = st.data_editor(
+            display_df,
+            num_rows="fixed",
+            hide_index=True,
+            disabled=["type"],
+            column_order=["type", "amount"],
+            column_config={
+                "type": st.column_config.TextColumn(
+                    "Type",
+                ),
+                "amount": st.column_config.TextColumn(
+                    "Monthly Budget",
+                    help="Use comma as decimal separator, e.g. 123,45",
+                ),
+            },
+            key="budget_editor",
+            width="stretch",
+        )
 
-        for budget_type in budget_types:
+    updates = []
 
-            current_amount = user_budget[user_budget["type"] == budget_type]["amount"].iloc[0]
+    for idx, row in edited_df.iterrows():
+        budget_type = row["type"]
 
-            st.markdown(
-                f"<p style='font-size:24px;'><strong>{budget_type}</strong></p>",
-                unsafe_allow_html=True,
-            )
+        try:
+            new_amount = new_utils.parse_it_number(row["amount"])
+        except ValueError:
+            st.warning(f"Invalid budget value for {budget_type}. Use a format like 123,45.")
+            return
 
-            new_amount = st.number_input(
-                "Monthly budget",
-                value=float(current_amount),
-                step=0.01,
-                key=f"new_monthly_amount_{budget_type}",
-                label_visibility="collapsed",
-            )
+        old_amount = original_df.loc[idx, "amount"]
 
-            if st.button(f"Update", key=f"update_button_{budget_type}"):
-                with conn.session as s:
-                    s.execute(
-                        text("""
-                            UPDATE budgets
-                            SET amount = :amount
-                            WHERE type = :type
-                            AND user_id = :user_id
-                        """),
-                        {
-                            "amount": new_amount,
-                            "type": budget_type,
-                            "user_id": st.session_state.user_id,
-                        },
-                    )
-                    s.commit()
-                st.success(f"{budget_type} monthly budget updated!")
-                st.rerun()
+        new_amount = round(new_amount, 2)
+
+        if new_amount != old_amount:
+            updates.append({
+                "type": budget_type,
+                "amount": new_amount,
+            })
+
+    if updates:
+        with conn.session as s:
+            for update in updates:
+                s.execute(
+                    text("""
+                        UPDATE budgets
+                        SET amount = :amount
+                        WHERE type = :type
+                        AND user_id = :user_id
+                    """),
+                    {
+                        "amount": update["amount"],
+                        "type": update["type"],
+                        "user_id": st.session_state.user_id,
+                    }
+                )
+
+            s.commit()
+
+        st.toast("Budget updated", icon="✅")
+        st.rerun()
+    
 #############################################################################################################################################################################
 # MAIN PAGE FUNCTIONS
 
-def summary_table(table_data, user_type_characteristics):
+def summary_table(table_data, user_type_characteristics,conn):
 
-    type_to_color = zip(user_type_characteristics["type"], user_type_characteristics["color"])
-    colors_table = {}
-    for type_, color in type_to_color:
-        colors_table[type_] = f"color:{color};"
+    if "colors_table" not in st.session_state:
+        type_to_color = zip(user_type_characteristics["type"], user_type_characteristics["color"])
+        st.session_state.colors_table = {}
+        for type_, color in type_to_color:
+            st.session_state.colors_table[type_] = f"color:{color};"
 
-    table_data = table_data.drop(columns=["id"]).copy()
-    table_data["date"] = pd.to_datetime(table_data["date"]).dt.strftime("%d/%m/%Y")
+    to_show_data = table_data.drop(columns=["id"]).copy()
+    to_show_data["date"] = pd.to_datetime(to_show_data["date"]).dt.strftime("%d/%m/%Y")
     
 
-    styled_df = table_data.style.map(
+    styled_df = to_show_data.style.map(
         lambda x: 'color: #bf2817;'
         if x == 'Expense'
-         else 'color: #54b86d;',
+        else 'color: #54b86d ;',
         subset=['ex_in']
     ).map(
-        lambda x: colors_table.get(x, "color:gray;"),
+        lambda x: st.session_state.colors_table.get(x, "color:gray;"),
         subset=['type']
     ).map(
         lambda x: 'color: #bf2817;'
-        if x == 'Expense'
-         else 'color: #54b86d;',
-        subset=['description']
-    ).map(
-        lambda x: 'color: #bf2817;'
-        if x == 'Expense'
-         else 'color: #54b86d;',
+        if x < 0
+        else 'color: #54b86d ;',
         subset=['amount']
-    ).map(
-        lambda x: 'color: #bf2817;'
-        if x == 'Expense'
-         else 'color: #54b86d;',
-        subset=['ex_in']
     ).format(
-        lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+        lambda x: new_utils.format_it_number(x) if isinstance(x, (int, float)) else x,
         subset=['amount']
     )
     
 
-    st.dataframe(styled_df,
+    transactions_to_remove = st.dataframe(styled_df,
                 hide_index=True,
                 use_container_width=True,
+                on_select="rerun",
+                selection_mode="multi-row",
                 column_config={
                 "amount": "Amount",
                 "type": "Type",
                 "date": "Date",
                 "ex_in": "Income/Expense",
                 "description": "Description",
+                
     })
+
+    
+    if transactions_to_remove["selection"]["rows"] not in (None, []):
+        rows_to_remove = transactions_to_remove["selection"]["rows"]
+        id_to_remove = table_data.iloc[rows_to_remove]["id"].tolist()
+        with st.container(border=False, horizontal_alignment="right"):
+            if st.button("Remove selected transactions", key="remove_selected_transactions_button"):
+                with conn.session as s:
+                    s.execute(
+                        text("""
+                            DELETE FROM transactions
+                            WHERE id = ANY(:ids)
+                            AND user_id = :user_id
+                        """),
+                        {
+                            "ids": id_to_remove,
+                            "user_id": st.session_state.user_id,
+                        },
+                    )
+                    s.commit()
+                st.success("Selected transactions removed!")
+                st.rerun()
 
 
 def chart(transactions_df):
@@ -446,7 +475,7 @@ def chart(transactions_df):
     )
 
     # Plot line chart
-    general_fig.update_layout(title=dict(text="Cumulative Balance Over Time", font=dict(size=22)), xaxis_title="Date", yaxis_title="Cumulative Balance", showlegend=False)
+    general_fig.update_layout(title=dict(text="Cumulative Balance Over Time", font=dict(size=22)),  xaxis_title="Date", yaxis_title="Cumulative Balance", showlegend=False)
     general_fig.update_xaxes(tickformat="%d/%m/%Y")
     st.plotly_chart(general_fig, use_container_width=True)
 
@@ -466,7 +495,105 @@ def pie_chart(user_transactions, user_type_characteristics):
     # Total expenses for each type, using the same colors as in the table.
     for t in expenses_by_type.index:
         st.markdown(f"<p style='color: {colors_table.get(t, 'gray').split(':')[-1][:-1]}; font-size: 18px;'>{t}: {expenses_by_type[t]:,.2f} </p>", unsafe_allow_html=True)
-
-def show_budget(transactions, budget):
     
-    print()
+    
+def budget_vs_actuals(transactions, budget, type_characteristics):
+
+    if "colors_table" not in st.session_state:
+        type_to_color = zip(type_characteristics["type"], type_characteristics["color"])
+        st.session_state.colors_table = {}
+        for type_, color in type_to_color:
+            st.session_state.colors_table[type_] = f"color:{color};"
+
+    month_names = { 1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun", 7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"}
+
+    with st.container(border=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.selectbox(
+            "Select month for comparison",
+            options=range(1, 13),
+            format_func=lambda x: month_names[x],
+            key="budget_comparison_month"
+            )
+            
+        with col2:
+            st.selectbox("Select year for comparison", options=[str(y) for y in range(datetime.now().year - 10, datetime.now().year + 1)], index=10, key="budget_comparison_year")
+
+    
+    selected_month = st.session_state.budget_comparison_month
+    selected_year = int(st.session_state.budget_comparison_year)
+
+    transactions_temp = transactions.copy()
+
+    transactions_temp["date"] = pd.to_datetime(transactions["date"]).copy()
+
+    filtered_transactions = transactions_temp[
+        (transactions_temp["date"].dt.month == selected_month) &
+        (transactions_temp["date"].dt.year == selected_year)
+    ]
+
+    if filtered_transactions.empty:
+        st.warning("No transactions found for the selected period.")
+        return
+
+    # Get the sum of expenses for each type in the selected month
+    expenses_by_type = filtered_transactions[filtered_transactions["ex_in"] == "Expense"].groupby("type")["amount"].sum().to_frame()
+    # fill missing types with 0 expenses. Fill only the types that in the ex_in column have expense as direction
+    for t in type_characteristics[type_characteristics["direction"] == "Expense"]["type"]:
+        if t not in expenses_by_type.index:
+            expenses_by_type.loc[t] = 0.0
+    
+    # Rename columns amount_x and amount_y to actual and budget
+    expenses_by_type = expenses_by_type.rename(columns={"amount": "expenses"})
+
+    # Add a column for the budgeted amount for each type, matching by type and user_id
+    expenses_by_type = expenses_by_type.merge(budget, on="type", how="left")
+    expenses_by_type = expenses_by_type.rename(columns={"amount": "budget"})
+
+    expenses_by_type["budget"] = expenses_by_type["budget"].fillna(0).astype(float)
+    expenses_by_type["expenses"] = expenses_by_type["expenses"].fillna(0).astype(float)
+
+    # Add a column that shows the difference between the actual expenses and the budgeted amount
+    expenses_by_type["difference"] = expenses_by_type["budget"] + expenses_by_type["expenses"]
+
+
+
+    # Add a row at the bottom that shows the total expenses, total budget, and total difference
+    total_row = pd.DataFrame({
+        "type": "Total",
+        "expenses": expenses_by_type["expenses"].sum(),
+        "budget": expenses_by_type["budget"].sum(),
+        "difference": expenses_by_type["difference"].sum(),
+    }, index=[len(expenses_by_type)])
+
+    expenses_by_type = pd.concat([expenses_by_type, total_row], ignore_index=True)
+
+    expenses_by_type[["budget", "expenses", "difference"]] = expenses_by_type[
+    ["budget", "expenses", "difference"]
+    ].round(2)
+
+    # swap budget and expenses columns for better readability
+    expenses_by_type = expenses_by_type[["type", "budget", "expenses", "difference"]]
+
+    stylized_budget = expenses_by_type.style.format({
+        "budget": new_utils.format_it_number,
+        "expenses": new_utils.format_it_number,
+        "difference": new_utils.format_it_number,
+    }).map(
+        lambda x: st.session_state.colors_table.get(x, "color:gray;"),
+        subset=['type']
+    ).apply(
+        lambda row: ['background-color: #2b0101;' if row['difference'] < 0 else 'background-color:#092b01;' if row['difference'] > 0 else '' for _ in row.index],
+        axis=1
+    )
+
+
+   
+
+    st.dataframe(stylized_budget,hide_index=True, use_container_width=True, column_config={
+        "type": st.column_config.TextColumn("Type"),
+        "budget": st.column_config.TextColumn("Budget"),
+        "expenses": st.column_config.TextColumn("Actual Expenses"),
+        "difference": st.column_config.TextColumn("Difference"),
+    })

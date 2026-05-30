@@ -12,39 +12,46 @@ st.title("Budgy Login")
 tab_login, tab_register = st.tabs(["Login", "Register"])
 
 with tab_login:
-    username = st.text_input("Username", key="login_username")
-    password = st.text_input("Password", type="password", key="login_password")
+    with st.form("login", enter_to_submit=True):
+        username = st.text_input("Username", key="login_username")
+        password = st.text_input("Password", type="password", key="login_password")
 
-    if st.button("Login"):
-        user = login_utils.authenticate_user(conn, username, password)
+        if st.form_submit_button("Login"):
+            user = login_utils.authenticate_user(conn, username, password)
 
-        if user is None:
-            st.error("Invalid username or password.")
-        else:
-            st.session_state.user_id = user["id"]
-            st.session_state.username = user["username"]
-            st.switch_page("pages/new_main.py")
+            if user is None:
+                st.error("Invalid username or password.")
+            else:
+                st.session_state.user_id = user["id"]
+                st.session_state.username = user["username"]
+                st.switch_page("pages/new_main.py")
+
 
 with tab_register:
-    new_username = st.text_input("Username", key="register_username")
-    new_password = st.text_input("Password", type="password", key="register_password")
-    key_input = st.text_input("Secret key", key="register_key")
+    with st.form("register", enter_to_submit=True):
+        new_username = st.text_input("Username", key="register_username")
+        new_password = st.text_input("Password", type="password", key="register_password")
+        key_input = st.text_input("Secret key",type="password", key="register_key")
 
 
-    if st.button("Create account"):
-        if key_input != st.secrets["secret_key"]:
-            st.error("Invalid secret key.")
-            st.stop()
+        if st.form_submit_button("Create account"):
+            if key_input != st.secrets["secret_key"]:
+                st.error("Invalid secret key.")
+                st.stop()
+            
+            if new_username.strip() == "" or new_password.strip() == "":
+                st.error("Username and password cannot be empty.")
+                st.stop()
 
-        login_utils.create_user(conn, new_username, new_password)
-        # Extract the user_id from the database
-        user_id = conn.session.execute(
-            text("SELECT id FROM users WHERE username = :username"),
-            {"username": new_username.strip()},
-        ).fetchone()[0]
+            login_utils.create_user(conn, new_username, new_password)
+            # Extract the user_id from the database
+            user_id = conn.session.execute(
+                text("SELECT id FROM users WHERE username = :username"),
+                {"username": new_username.strip()},
+            ).fetchone()[0]
 
-        login_utils.generate_user_type_db(conn, user_id)
-        login_utils.generate_user_budget_db(conn, user_id)
-        st.success("Account created. You can log in now.")
+            login_utils.generate_user_type_db(conn, user_id)
+            login_utils.generate_user_budget_db(conn, user_id)
+            st.success("Account created. You can log in now.")
         
 
